@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  storage:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=pubsub_db
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  broker:
+    image: redis:7-alpine
+    volumes:
+      - broker_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  aggregator:
+    build:
+      context: ./aggregator
+    image: uas-aggregator:latest
+    depends_on:
+      storage:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@storage:5432/pubsub_db
+      - REDIS_URL=redis://broker:6379/0
+    ports:
+      - "8080:8080"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+
+  consumer:
+    build:
+      context: ./aggregator
+    image: uas-consumer:latest
+    depends_on:
+      storage:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@storage:5432/pubsub_db
+      - REDIS_URL=redis://broker:6379/0
+    command: ["python", "consumer.py"]
+
+  publisher:
+    build:
+      context: ./publisher
+    image: uas-publisher:latest
+    depends_on:
+      - aggregator
+    environment:
+      - TARGET_URL=http://aggregator:8080/publish
+    command: ["python", "main.py"]
+
+volumes:
+  pg_data:
+  broker_data:
