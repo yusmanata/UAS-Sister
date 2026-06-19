@@ -46,3 +46,6 @@ pip install -r aggregator/requirements.txt
 pip install httpx pytest pytest-asyncio
 pytest tests/ -v -s
 ```
+
+
+Video Youtube: https://youtu.be/8WywkxQ5rSQ
